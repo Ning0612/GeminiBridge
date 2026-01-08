@@ -1,6 +1,7 @@
 /**
  * Gemini CLI Adapter
- * Executes Gemini CLI with support for both streaming and non-streaming modes
+ * Executes Gemini CLI and waits for complete response
+ * Note: GeminiStream class is deprecated - streaming mode now uses executeGeminiCLI
  */
 
 import { spawn, ChildProcess } from 'child_process';
@@ -14,6 +15,7 @@ import { logger } from '../utils/logger';
 
 /**
  * Stream event emitter for Gemini CLI streaming mode
+ * @deprecated No longer used - streaming now uses executeGeminiCLI with chunked SSE responses
  */
 export class GeminiStream extends EventEmitter {
   private process: ChildProcess | null = null;
@@ -307,6 +309,7 @@ export async function executeGeminiCLI(
 
 /**
  * Create streaming instance
+ * @deprecated No longer used - use executeGeminiCLI instead
  */
 export function createGeminiStream(
   prompt: string,

@@ -6,6 +6,7 @@
 import * as winston from 'winston';
 import * as path from 'path';
 import * as fs from 'fs';
+import DailyRotateFile from 'winston-daily-rotate-file';
 import { LogEntry } from '../types';
 
 // Ensure logs directory exists
@@ -13,6 +14,9 @@ const logsDir = path.join(process.cwd(), 'logs');
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }
+
+// Log retention in days (default: 7 days)
+const logRetentionDays = process.env.LOG_RETENTION_DAYS ? parseInt(process.env.LOG_RETENTION_DAYS, 10) : 7;
 
 /**
  * Create Winston logger instance
@@ -38,19 +42,24 @@ export const logger = winston.createLogger({
         })
       ),
     }),
-    // File output
-    new winston.transports.File({
-      filename: path.join(logsDir, 'gemini-bridge.log'),
-      maxsize: 10 * 1024 * 1024, // 10MB
-      maxFiles: 5,
-      tailable: true,
+    // Daily rotating file for all logs
+    new DailyRotateFile({
+      dirname: logsDir,
+      filename: 'gemini-bridge-%DATE%.log',
+      datePattern: 'YYYY-MM-DD',
+      zippedArchive: true,
+      maxSize: '10m',
+      maxFiles: `${logRetentionDays}d`,
     }),
-    // Error log file
-    new winston.transports.File({
-      filename: path.join(logsDir, 'error.log'),
+    // Daily rotating file for error logs only
+    new DailyRotateFile({
+      dirname: logsDir,
+      filename: 'error-%DATE%.log',
+      datePattern: 'YYYY-MM-DD',
       level: 'error',
-      maxsize: 10 * 1024 * 1024, // 10MB
-      maxFiles: 5,
+      zippedArchive: true,
+      maxSize: '10m',
+      maxFiles: `${logRetentionDays}d`,
     }),
   ],
 });

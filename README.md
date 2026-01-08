@@ -5,17 +5,19 @@ OpenAI API-compatible proxy server for Google Gemini CLI. Enables browser extens
 ## Features
 
 - ✅ **OpenAI API Compatibility**: Full `/v1/models` and `/v1/chat/completions` support
-- ✅ **Streaming Support**: Real-time streaming responses using Server-Sent Events (SSE)
-- ✅ **Model Mapping**: Automatic mapping from OpenAI models to Gemini models
-- ✅ **Security**: Bearer token authentication, CORS, and sandboxed CLI execution
-- ✅ **Rate Limiting**: Configurable request rate limiting (default: 100 req/min)
-- ✅ **Browser Extension Ready**: Works with immersive translation, ChatGPT Sider, and similar tools
+- ✅ **Streaming Support**: SSE-compatible streaming responses (pseudo-streaming mode)
+- ✅ **Model Mapping**: Automatic mapping from OpenAI models to Gemini models with fallback
+- ✅ **Security**: Bearer token authentication, CORS, sandboxed CLI execution, and rate limiting
+- ✅ **UTF-8 Support**: Full UTF-8 encoding support for international characters (Windows optimized)
+- ✅ **Browser Extension Ready**: Works with Immersive Translate, ChatGPT Sider, and similar tools
+- ✅ **Graceful Fallback**: Unmapped models automatically use `gemini-2.5-flash`
 
 ## Prerequisites
 
 - Node.js 18+ and npm
 - [Official Google Gemini CLI](https://cloud.google.com/vertex-ai/generative-ai/docs/multimodal/call-gemini-using-cli) installed and configured
-- ⚠️ **Note**: This project uses plain text output mode and is compatible with any Gemini CLI version (including custom configurations with MCP servers)
+- ⚠️ **Important**: This project uses **plain text output mode** (not JSON output) and reads stdout directly
+- ✅ **Compatible**: Works with any Gemini CLI version, including custom configurations with MCP servers
 
 ## Installation
 
@@ -48,6 +50,10 @@ BEARER_TOKEN=your-secret-token-here
 # Gemini CLI Configuration
 GEMINI_CLI_PATH=gemini
 GEMINI_CLI_TIMEOUT=30000
+
+# Logging
+LOG_LEVEL=info
+LOG_RETENTION_DAYS=7
 
 # Rate Limiting
 RATE_LIMIT_MAX_REQUESTS=100
@@ -107,7 +113,7 @@ curl http://127.0.0.1:11434/v1/chat/completions \
 
 **Streaming chat completion:**
 ```bash
-curl http://127.0.0.1:11434/v1/chat/completions \
+curl -N http://127.0.0.1:11434/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your-secret-token-here" \
   -d '{
@@ -118,6 +124,8 @@ curl http://127.0.0.1:11434/v1/chat/completions \
     "stream": true
   }'
 ```
+
+**Note**: Streaming mode uses "pseudo-streaming" - the complete response is generated first, then sent as SSE chunks for OpenAI API compatibility.
 
 ### Browser Extension Integration
 
@@ -222,7 +230,11 @@ Error: spawn gemini ENOENT
 ```
 **Solution**: Install Gemini CLI or set correct path in `.env`:
 ```env
-GEMINI_CLI_PATH=/path/to/gemini
+# Windows example (if using npm global install)
+GEMINI_CLI_PATH=C:\Users\YourName\AppData\Roaming\npm\gemini.cmd
+
+# Linux/macOS example
+GEMINI_CLI_PATH=/usr/local/bin/gemini
 ```
 
 ### Authentication failed
@@ -242,6 +254,29 @@ GEMINI_CLI_PATH=/path/to/gemini
 {"error":{"code":"timeout"}}
 ```
 **Solution**: Increase `GEMINI_CLI_TIMEOUT` in `.env` (default: 30000ms).
+
+### UTF-8 encoding issues (Windows)
+**Issue**: Characters appear garbled or malformed
+**Solution**: The server automatically sets UTF-8 encoding on Windows. If issues persist:
+1. Ensure your terminal uses UTF-8 encoding (`chcp 65001`)
+2. Verify Gemini CLI outputs UTF-8 encoded text
+3. Check logs in `logs/gemini-bridge.log` for debugging information
+
+### Empty or invalid responses
+**Issue**: `{"error":{"message":"Empty response from CLI"}}`
+**Solution**:
+1. Test Gemini CLI directly: `gemini -p "test" -m "gemini-2.5-flash" --sandbox`
+2. Check CLI stdout is plain text (not JSON format)
+3. Verify model name is correct in `config/models.json`
+4. Review logs for detailed error messages
+
+### Log file management
+**Feature**: Daily rotating log files with automatic cleanup
+- Log files are created daily with format: `gemini-bridge-YYYY-MM-DD.log` and `error-YYYY-MM-DD.log`
+- Old log files are automatically compressed (gzip) to save disk space
+- Logs older than `LOG_RETENTION_DAYS` (default: 7 days) are automatically deleted
+- Configure retention period in `.env`: `LOG_RETENTION_DAYS=7`
+- Log files location: `logs/` directory in the project root
 
 ## Development
 

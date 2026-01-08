@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config';
 import { ChatCompletionRequest, ChatCompletionResponse, ChatCompletionChunk } from '../types';
 import { buildPrompt, validateMessages } from '../utils/prompt_builder';
-import { executeGeminiCLI, createGeminiStream } from '../adapters/gemini_cli';
+import { executeGeminiCLI } from '../adapters/gemini_cli';
 import {
   sendError,
   handleValidationError,
@@ -20,10 +20,10 @@ import { logRequest, logRequestStart, logError, logger } from '../utils/logger';
 const router = Router();
 
 /**
- * POST /v1/chat/completions
+ * POST /v1/chat/completions (and /chat/completions for compatibility)
  * Handles both streaming and non-streaming chat completion requests
  */
-router.post('/v1/chat/completions', async (req: Request, res: Response) => {
+const chatCompletionHandler = async (req: Request, res: Response) => {
   const requestId = req.context?.requestId || uuidv4();
   const startTime = Date.now();
 
@@ -83,7 +83,11 @@ router.post('/v1/chat/completions', async (req: Request, res: Response) => {
     logError(requestId, error instanceof Error ? error : String(error));
     sendError(res, handleParseError(error instanceof Error ? error : new Error(String(error))));
   }
-});
+};
+
+// Register handler for both paths (with and without /v1 prefix)
+router.post('/v1/chat/completions', chatCompletionHandler);
+router.post('/chat/completions', chatCompletionHandler);
 
 /**
  * Handle non-streaming request
@@ -142,6 +146,8 @@ async function handleNonStreamingRequest(
 
 /**
  * Handle streaming request
+ * Note: Despite being "streaming", we first read the complete response from CLI,
+ * then send it as SSE chunks for OpenAI API compatibility
  */
 async function handleStreamingRequest(
   req: Request,
@@ -157,16 +163,45 @@ async function handleStreamingRequest(
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
 
-  const stream = createGeminiStream(prompt, mappedModel, requestId);
+  try {
+    // Execute CLI and get complete response
+    const result = await executeGeminiCLI(prompt, mappedModel, requestId);
 
-  let hasError = false;
-  let chunkCount = 0;
+    // Handle CLI execution errors
+    if (!result.success) {
+      const errorChunk = {
+        error: {
+          message: result.error || 'Unknown error',
+          type: 'api_error',
+          code: 'model_error',
+        },
+      };
 
-  // Handle stream data
-  stream.on('data', (content: string) => {
-    chunkCount++;
+      res.write(`data: ${JSON.stringify(errorChunk)}\n\n`);
+      res.end();
 
-    const chunk: ChatCompletionChunk = {
+      logRequest({
+        requestId,
+        clientIp: req.context?.clientIp || 'unknown',
+        userAgent: req.context?.userAgent || 'unknown',
+        timestamp: req.context?.timestamp || new Date(),
+        model: requestedModel,
+        mappedModel,
+        stream: true,
+        exitCode: result.exitCode,
+        stderr: result.stderr,
+        latency: Date.now() - startTime,
+        error: result.error,
+      });
+
+      return;
+    }
+
+    // Send complete response as SSE chunks
+    const content = result.content || '';
+
+    // Send initial chunk with role
+    const initialChunk: ChatCompletionChunk = {
       id: `chatcmpl-${requestId}`,
       object: 'chat.completion.chunk',
       created: Math.floor(Date.now() / 1000),
@@ -174,21 +209,29 @@ async function handleStreamingRequest(
       choices: [
         {
           index: 0,
-          delta: {
-            content,
-          },
+          delta: { role: 'assistant' },
           finish_reason: null,
         },
       ],
     };
+    res.write(`data: ${JSON.stringify(initialChunk)}\n\n`);
 
-    res.write(`data: ${JSON.stringify(chunk)}\n\n`);
-  });
-
-  // Handle stream end
-  stream.on('end', () => {
-    if (hasError) {
-      return;
+    // Send content as single chunk (or split into larger chunks if needed)
+    if (content) {
+      const contentChunk: ChatCompletionChunk = {
+        id: `chatcmpl-${requestId}`,
+        object: 'chat.completion.chunk',
+        created: Math.floor(Date.now() / 1000),
+        model: requestedModel,
+        choices: [
+          {
+            index: 0,
+            delta: { content },
+            finish_reason: null,
+          },
+        ],
+      };
+      res.write(`data: ${JSON.stringify(contentChunk)}\n\n`);
     }
 
     // Send final chunk with finish_reason
@@ -220,43 +263,29 @@ async function handleStreamingRequest(
       mappedModel,
       stream: true,
       exitCode: 0,
-      stderr: undefined,
+      stderr: result.stderr,
       latency: Date.now() - startTime,
     });
 
     logger.info('Streaming completed', {
       requestId,
-      chunkCount,
+      contentLength: content.length,
       latency: Date.now() - startTime,
     });
-  });
-
-  // Handle stream errors
-  stream.on('error', (error: Error) => {
-    hasError = true;
-
-    logError(requestId, error, { mappedModel, chunkCount });
+  } catch (error) {
+    logError(requestId, error instanceof Error ? error : String(error), { mappedModel });
 
     const errorChunk = {
       error: {
-        message: error.message,
+        message: error instanceof Error ? error.message : 'Unknown error',
         type: 'api_error',
-        code: 'model_error',
+        code: 'internal_error',
       },
     };
 
     res.write(`data: ${JSON.stringify(errorChunk)}\n\n`);
     res.end();
-  });
-
-  // Handle client disconnect
-  req.on('close', () => {
-    logger.info('Client disconnected', { requestId, chunkCount });
-    stream.stop();
-  });
-
-  // Start streaming
-  stream.start();
+  }
 }
 
 export default router;
