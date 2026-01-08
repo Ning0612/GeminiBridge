@@ -1,15 +1,30 @@
-node_modules/
-dist/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+
+# Environment
 .env
+.env.local
+.env.*.local
+
+# Logs
+logs/
 *.log
-.DS_Store
-coverage/
+
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-.env.local
-.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
 .claude/
-logs/
