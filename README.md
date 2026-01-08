@@ -1,6 +1,13 @@
 # GeminiBridge
 
+![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?style=flat&logo=node.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.3-3178C6?style=flat&logo=typescript&logoColor=white)
+![Express](https://img.shields.io/badge/Express-4.18-000000?style=flat&logo=express&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-yellow.svg)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+
 OpenAI API-compatible proxy server for Google Gemini CLI. Enables browser extensions and applications designed for OpenAI API to work with local Gemini models.
+
 
 ## Features
 
@@ -67,12 +74,17 @@ Edit `config/models.json` to map OpenAI model names to Gemini models:
 ```json
 {
   "gpt-3.5-turbo": "gemini-2.5-flash",
+  "gpt-3.5-turbo-16k": "gemini-2.5-flash",
   "gpt-4": "gemini-2.5-pro",
-  "gpt-4-turbo": "gemini-2.5-pro"
+  "gpt-4-turbo": "gemini-2.5-pro",
+  "gpt-4-turbo-preview": "gemini-2.5-pro",
+  "gpt-4o": "gemini-2.5-pro",
+  "gpt-4o-mini": "gemini-2.5-flash"
 }
 ```
 
 **Fallback behavior**: Unmapped models automatically use `gemini-2.5-flash`.
+
 
 ## Usage
 
@@ -294,7 +306,210 @@ npm run lint
 npm run format
 ```
 
+## Deployment
+
+### Production Deployment
+
+#### 1. Basic Production Setup
+
+```bash
+# 1. Clone or copy project to server
+cd /path/to/gemini-bridge
+
+# 2. Install dependencies
+npm install --production
+
+# 3. Build TypeScript
+npm run build
+
+# 4. Configure environment
+cp .env.example .env
+nano .env  # Edit configuration
+
+# 5. Start server
+npm start
+```
+
+#### 2. Deploy with PM2 (Recommended)
+
+PM2 provides process management, auto-restart, and monitoring:
+
+```bash
+# Install PM2 globally
+npm install -g pm2
+
+# Start with PM2
+pm2 start dist/server.js --name gemini-bridge
+
+# Configure auto-restart on reboot
+pm2 startup
+pm2 save
+
+# Monitor logs
+pm2 logs gemini-bridge
+
+# Other PM2 commands
+pm2 status              # Check status
+pm2 restart gemini-bridge   # Restart
+pm2 stop gemini-bridge      # Stop
+pm2 delete gemini-bridge    # Remove
+```
+
+**PM2 Ecosystem File** (Optional):
+
+Create `ecosystem.config.js`:
+
+```javascript
+module.exports = {
+  apps: [{
+    name: 'gemini-bridge',
+    script: './dist/server.js',
+    instances: 1,
+    autorestart: true,
+    watch: false,
+    max_memory_restart: '500M',
+    env: {
+      NODE_ENV: 'production'
+    },
+    error_file: './logs/pm2-error.log',
+    out_file: './logs/pm2-out.log',
+    log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
+  }]
+};
+```
+
+Then start with:
+```bash
+pm2 start ecosystem.config.js
+```
+
+#### 3. Deploy as systemd Service (Linux)
+
+Create `/etc/systemd/system/gemini-bridge.service`:
+
+```ini
+[Unit]
+Description=GeminiBridge OpenAI API Proxy
+After=network.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/path/to/gemini-bridge
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /path/to/gemini-bridge/dist/server.js
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gemini-bridge
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+
+```bash
+# Reload systemd
+sudo systemctl daemon-reload
+
+# Enable on boot
+sudo systemctl enable gemini-bridge
+
+# Start service
+sudo systemctl start gemini-bridge
+
+# Check status
+sudo systemctl status gemini-bridge
+
+# View logs
+sudo journalctl -u gemini-bridge -f
+```
+
+#### 4. Reverse Proxy with Nginx (Optional)
+
+For HTTPS and additional security:
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:11434;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        
+        # SSE support (for streaming)
+        proxy_buffering off;
+        proxy_read_timeout 86400;
+    }
+}
+```
+
+#### 5. Security Checklist
+
+Before deploying to production:
+
+- [ ] Set strong `BEARER_TOKEN` in `.env`
+- [ ] Review `HOST` binding (keep `127.0.0.1` if using reverse proxy)
+- [ ] Configure firewall rules
+- [ ] Set up HTTPS (with Let's Encrypt or similar)
+- [ ] Configure log rotation (built-in, check `LOG_RETENTION_DAYS`)
+- [ ] Test rate limiting settings
+- [ ] Verify Gemini CLI is properly installed and accessible
+- [ ] Set appropriate file permissions (`chmod 600 .env`)
+- [ ] Consider running as non-root user
+
+#### 6. Monitoring and Maintenance
+
+**Health Check:**
+```bash
+curl http://127.0.0.1:11434/health
+```
+
+**Monitor Logs:**
+```bash
+# Application logs
+tail -f logs/gemini-bridge-*.log
+
+# Error logs only
+tail -f logs/error-*.log
+
+# PM2 logs (if using PM2)
+pm2 logs gemini-bridge
+```
+
+**Performance Monitoring:**
+- Monitor disk space (logs directory)
+- Check memory usage
+- Monitor response times
+- Track rate limit rejections
+
+### Environment-Specific Configuration
+
+**Development:**
+```env
+NODE_ENV=development
+LOG_LEVEL=debug
+```
+
+**Production:**
+```env
+NODE_ENV=production
+LOG_LEVEL=info
+BEARER_TOKEN=use-strong-random-token-here
+```
+
 ## Project Structure
+
 
 ```
 ├── src/
@@ -329,6 +544,7 @@ MIT
 ## Support
 
 For issues and questions, please check:
-- [GUILD.md](docs/GUILD.md) - Architecture and design documentation
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md) - Architecture and design documentation
 - [CLAUDE.md](CLAUDE.md) - Development guide for contributors
 - GitHub Issues (if hosted on GitHub)
+

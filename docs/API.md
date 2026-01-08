@@ -311,10 +311,15 @@ Models are mapped in `config/models.json`:
 ```json
 {
   "gpt-3.5-turbo": "gemini-2.5-flash",
+  "gpt-3.5-turbo-16k": "gemini-2.5-flash",
   "gpt-4": "gemini-2.5-pro",
-  "gpt-4-turbo": "gemini-2.5-pro"
+  "gpt-4-turbo": "gemini-2.5-pro",
+  "gpt-4-turbo-preview": "gemini-2.5-pro",
+  "gpt-4o": "gemini-2.5-pro",
+  "gpt-4o-mini": "gemini-2.5-flash"
 }
 ```
+
 
 ### Fallback Behavior
 
@@ -617,4 +622,5 @@ All requests are logged to:
 
 - [README.md](../README.md) - Setup and usage guide
 - [CLAUDE.md](../CLAUDE.md) - Development guide
-- [GUILD.md](GUILD.md) - Architecture documentation (Chinese)
+- [ARCHITECTURE.md](ARCHITECTURE.md) - Architecture documentation
+

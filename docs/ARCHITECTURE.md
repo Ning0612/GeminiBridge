@@ -555,8 +555,9 @@ RATE_LIMIT_WINDOW_MS=60000
 
 # Logging
 LOG_LEVEL=info
-LOG_FILE=logs/gemini-bridge.log
+LOG_RETENTION_DAYS=7
 ```
+
 
 ### Model Mappings
 
@@ -565,10 +566,15 @@ LOG_FILE=logs/gemini-bridge.log
 ```json
 {
   "gpt-3.5-turbo": "gemini-2.5-flash",
+  "gpt-3.5-turbo-16k": "gemini-2.5-flash",
   "gpt-4": "gemini-2.5-pro",
-  "gpt-4-turbo": "gemini-2.5-pro"
+  "gpt-4-turbo": "gemini-2.5-pro",
+  "gpt-4-turbo-preview": "gemini-2.5-pro",
+  "gpt-4o": "gemini-2.5-pro",
+  "gpt-4o-mini": "gemini-2.5-flash"
 }
 ```
+
 
 **Runtime Behavior:**
 - Loaded once at startup

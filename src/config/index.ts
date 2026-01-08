@@ -62,7 +62,6 @@ export function getConfig(): AppConfig {
       useSandbox: true, // Always use sandbox for security
     },
     logLevel: process.env.LOG_LEVEL || 'info',
-    logFile: process.env.LOG_FILE || 'logs/gemini-bridge.log',
     rateLimit: {
       maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10),
       windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10),
@@ -70,6 +69,7 @@ export function getConfig(): AppConfig {
     modelMappings,
     defaultModel: 'gemini-2.5-flash', // Fallback for unmapped models
   };
+
 
   return config;
 }

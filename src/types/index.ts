@@ -137,7 +137,6 @@ export interface AppConfig {
   bearerToken: string;
   geminiCLI: GeminiCLIConfig;
   logLevel: string;
-  logFile: string;
   rateLimit: {
     maxRequests: number;
     windowMs: number;
@@ -145,6 +144,7 @@ export interface AppConfig {
   modelMappings: ModelMapping;
   defaultModel: string; // Fallback model for unmapped requests
 }
+
 
 // ============================================================================
 // HTTP Response Helper Types
