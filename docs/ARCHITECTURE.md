@@ -229,16 +229,21 @@ process.on('close', (code) => {
 
 #### GeminiStream Class (DEPRECATED)
 
-**Status:** No longer used in production code
+**Status:** No longer used in production code (see `src/adapters/gemini_cli.ts:100-238`)
 
 **Original Purpose:** Real-time streaming from CLI
 
 **Why Deprecated:**
-- Gemini CLI doesn't support true streaming output yet
-- Current implementation uses pseudo-streaming instead
-- Would need `--output-format stream-json` support
+- Gemini CLI plain text output doesn't support real-time streaming
+- Current implementation uses pseudo-streaming (complete response → chunked SSE)
+- Both streaming and non-streaming modes now use `executeGeminiCLI()` for consistency
 
-**Future Use:** Could be revived if CLI adds streaming support
+**Current Approach:**
+- Execute CLI without `--output-format` flag (plain text mode)
+- Read complete stdout response
+- For streaming requests: chunk response and send as SSE events
+
+**Future Use:** Could be revived if CLI adds real-time streaming support
 
 ### 5. Resource Management (`src/utils/cli_queue.ts`)
 
@@ -434,6 +439,7 @@ export const config = getConfig(); // Loaded once at startup
 
 2. **Authentication Layer**
    - Bearer token validation
+   - Timing-safe token comparison
    - No public endpoints (except /health)
 
 3. **Execution Layer**
@@ -441,15 +447,9 @@ export const config = getConfig(); // Loaded once at startup
    - Temporary isolated directories
    - Timeout enforcement (30s default)
    - Process cleanup on error/timeout
-
-### 4. Execution Layer
-   - Sandboxed CLI execution (`--sandbox` flag)
-   - Temporary isolated directories
-   - Timeout enforcement (30s default)
-   - Process cleanup on error/timeout
    - **Concurrency Control**: Queue-based CLI process limiting (default: 5)
 
-### 5. Input Validation
+4. **Input Validation**
    - Message structure validation
    - Content type validation
    - Request size limits (1MB for JSON/Body)
@@ -574,7 +574,8 @@ HOST=127.0.0.1
 BEARER_TOKEN=required-secret-token
 
 # Gemini CLI
-GEMINI_CLI_PATH=gemini
+# Note: CLI path is hard-coded to 'gemini' to prevent the CLI from reading
+# unintended files when using full paths (which causes incorrect responses)
 GEMINI_CLI_TIMEOUT=30000
 
 # Rate Limiting
@@ -588,8 +589,6 @@ QUEUE_TIMEOUT=30000
 # Logging
 LOG_LEVEL=info
 DEBUG=false
-LOG_RETENTION_DAYS=7
-LOG_LEVEL=info
 LOG_RETENTION_DAYS=7
 ```
 

@@ -19,10 +19,23 @@ OpenAI API-compatible proxy server for Google Gemini CLI. Enables browser extens
 - ✅ **Browser Extension Ready**: Works with Immersive Translate, ChatGPT Sider, and similar tools
 - ✅ **Graceful Fallback**: Unmapped models automatically use `gemini-2.5-flash`
 
+## Usage Scenarios & Limitations
+
+### ✅ Suitable Scenarios
+this project is primarily designed for **local, small-scale AI tool applications**, such as:
+- **Browser Extensions**: Immersive Translate, ChatGPT Sider, etc.
+- **Translation Assistants**: Personal document or web page translation tools.
+- **Local Experiments**: Developers testing OpenAI-compatible tools with Gemini.
+
+### ❌ Limitations
+- **Latency Warning**: The Gemini CLI may take **up to 1 minute** to respond due to initialization overhead. This is normal behavior for the CLI.
+- **Not for Production/Enterprise**: Not suitable for high-concurrency, large-scale, or low-latency enterprise applications.
+
+
 ## Prerequisites
 
 - Node.js 18+ and npm
-- [Official Google Gemini CLI](https://cloud.google.com/vertex-ai/generative-ai/docs/multimodal/call-gemini-using-cli) installed and configured
+- [Official Google Gemini CLI](https://geminicli.com/) installed and configured
 - ⚠️ **Important**: This project uses **plain text output mode** (not JSON output) and reads stdout directly
 - ✅ **Compatible**: Works with any Gemini CLI version, including custom configurations with MCP servers
 
@@ -55,26 +68,20 @@ HOST=127.0.0.1
 BEARER_TOKEN=your-secret-token-here
 
 # Gemini CLI Configuration
-# Note: CLI path is hard-coded to 'gemini' for security and compatibility
-GEMINI_CLI_TIMEOUT=30000
+GEMINI_CLI_TIMEOUT=30000    # CLI execution timeout in milliseconds
 
 # Logging
-LOG_LEVEL=info
-LOG_RETENTION_DAYS=7
-
-# Debug Mode (set to true only in development)
-DEBUG=false
-
-# Debug Mode (set to true only in development)
-DEBUG=false
+LOG_LEVEL=info              # Log level: error, warn, info, debug
+LOG_RETENTION_DAYS=7        # Days to keep log files before auto-deletion
+DEBUG=false                 # Enable debug mode (development only)
 
 # Rate Limiting
-RATE_LIMIT_MAX_REQUESTS=100
-RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX_REQUESTS=100 # Maximum requests per time window
+RATE_LIMIT_WINDOW_MS=60000  # Rate limit time window in milliseconds
 
 # CLI Concurrency Control
 MAX_CONCURRENT_REQUESTS=5   # Maximum concurrent CLI processes
-QUEUE_TIMEOUT=30000         # Queue timeout (milliseconds)
+QUEUE_TIMEOUT=30000         # Queue timeout in milliseconds
 ```
 
 3. **Customize model mappings** (optional):
@@ -100,17 +107,20 @@ Edit `config/models.json` to map OpenAI model names to Gemini models:
 
 ### Start the Server
 
-**Production mode:**
-```bash
-npm start
-```
-
 **Development mode (with auto-reload):**
 ```bash
 npm run dev
 ```
 
+**Production mode (basic):**
+```bash
+npm run build
+npm start
+```
+
 Server will start on `http://127.0.0.1:11434` by default.
+
+**Note:** For production deployment with auto-restart and process management, see the [Deployment](#deployment) section below.
 
 ### Test with cURL
 
@@ -241,10 +251,10 @@ Health check endpoint (no authentication required).
 1. **Bearer Token**: Always set a strong, random bearer token in production
 2. **Localhost Only**: By default, server binds to `127.0.0.1` (localhost only)
 3. **CORS**: Configured for browser extensions and localhost access
-4. **CLI Sandbox**: Gemini CLI always runs with `--sandbox` flag (hard-coded to `'gemini'` command)
+4. **CLI Sandbox**: Gemini CLI always runs with `--sandbox` flag for security
 5. **Rate Limiting**: Prevents abuse (100 requests/minute by default)
-6. **Log Security**: Sensitive information is masked in logs (controlled by `DEBUG` environment variable)
-7. **Resource Protection**: Limits concurrent CLI processes (default: 5) and monitors system resources
+6. **Concurrency Control**: Limits concurrent CLI processes (default: 5) to prevent resource exhaustion
+7. **Log Security**: Sensitive information is masked in logs (controlled by `DEBUG` environment variable)
 
 ## Monitoring
 
@@ -273,10 +283,9 @@ Error: spawn gemini ENOENT
 ```
 **Solution**: Ensure Gemini CLI is installed and available in your system PATH.
 
-**Note**: The CLI path is hard-coded to `'gemini'` for security and compatibility. 
-Custom paths are not supported as they can cause incorrect response content.
+**Solution**: Ensure Gemini CLI is installed and available in your system PATH.
 
-Installation guide: [Gemini CLI Documentation](https://cloud.google.com/vertex-ai/generative-ai/docs/multimodal/call-gemini-using-cli)
+**Note**: The CLI command is hard-coded to `'gemini'` for security and stability. Please ensure the official Gemini CLI is installed globally or added to your PATH.
 
 ### Authentication failed
 ```
@@ -568,6 +577,14 @@ BEARER_TOKEN=use-strong-random-token-here
 └── package.json
 ```
 
+## Disclaimer
+
+This is an unofficial community project and is not affiliated with, endorsed by, or connected to Google or OpenAI.
+- "Gemini" is a trademark of Google LLC.
+- "OpenAI" is a trademark of OpenAI.
+
+This tool acts solely as a local adapter for the official Gemini CLI, which users must install and authenticate themselves. It does not bypass any authentication, rate limits, or billing mechanisms of the underlying services.
+
 ## License
 
 MIT
@@ -575,7 +592,8 @@ MIT
 ## Support
 
 For issues and questions, please check:
-- [ARCHITECTURE.md](docs/ARCHITECTURE.md) - Architecture and design documentation
+- [API.md](docs/API.md) - Complete API reference documentation
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md) - Technical architecture and design
 - [CLAUDE.md](CLAUDE.md) - Development guide for contributors
 - GitHub Issues (if hosted on GitHub)
 

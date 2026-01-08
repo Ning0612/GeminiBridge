@@ -291,6 +291,7 @@ async function executeGeminiCLIInternal(
       cwd: workDir,
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: useShell,
+      windowsHide: true,
     });
 
     // Write prompt to stdin with UTF-8 encoding
