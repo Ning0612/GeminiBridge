@@ -20,6 +20,34 @@ import { logRequest, logRequestStart, logError, logger } from '../utils/logger';
 // Debug mode flag
 const DEBUG_MODE = process.env.DEBUG === 'true';
 
+/**
+ * Validate request size constraints to prevent DoS attacks
+ */
+function validateRequestSize(messages: any[]): { valid: boolean; error?: string } {
+  // Limit message array length (100 messages is very generous)
+  if (messages.length > 100) {
+    return {
+      valid: false,
+      error: 'Too many messages. Maximum 100 messages allowed.'
+    };
+  }
+
+  // Limit individual message content length
+  for (const msg of messages) {
+    if (msg.content && typeof msg.content === 'string') {
+      // 100K characters per message (far exceeds normal usage)
+      if (msg.content.length > 100000) {
+        return {
+          valid: false,
+          error: 'Message content too long. Maximum 100,000 characters per message.'
+        };
+      }
+    }
+  }
+
+  return { valid: true };
+}
+
 const router = Router();
 
 /**
@@ -48,6 +76,13 @@ const chatCompletionHandler = async (req: Request, res: Response) => {
     const validation = validateMessages(body.messages);
     if (!validation.valid) {
       sendError(res, handleValidationError(validation.error || 'Invalid messages', 'messages'));
+      return;
+    }
+
+    // Validate request size constraints
+    const sizeValidation = validateRequestSize(body.messages);
+    if (!sizeValidation.valid) {
+      sendError(res, handleValidationError(sizeValidation.error!, 'messages'));
       return;
     }
 

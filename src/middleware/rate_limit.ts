@@ -16,6 +16,36 @@ interface RequestLog {
 const requestLogs = new Map<string, RequestLog[]>();
 
 /**
+ * Get client IP address (supports reverse proxy)
+ */
+function getClientIP(req: Request): string {
+  // Check X-Forwarded-For header (if behind reverse proxy)
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded && typeof forwarded === 'string') {
+    // Take the first IP in the list (original client IP)
+    return forwarded.split(',')[0].trim();
+  }
+
+  // Fallback to req.ip
+  return req.ip || req.socket.remoteAddress || 'unknown';
+}
+
+/**
+ * Monitor memory usage of rate limit store
+ */
+function checkMemoryUsage(): void {
+  const entryCount = requestLogs.size;
+
+  if (entryCount > 10000) {
+    const memoryMB = process.memoryUsage().heapUsed / 1024 / 1024;
+    logger.warn('Rate limit store has many entries', {
+      entryCount,
+      memoryUsageMB: memoryMB.toFixed(2)
+    });
+  }
+}
+
+/**
  * Clean up old request logs
  */
 function cleanupOldLogs(ip: string, windowMs: number): void {
@@ -38,7 +68,7 @@ function cleanupOldLogs(ip: string, windowMs: number): void {
  * Rate limiting middleware
  */
 export function rateLimitMiddleware(req: Request, res: Response, next: NextFunction): void {
-  const ip = req.ip || 'unknown';
+  const ip = getClientIP(req);  // Use improved IP detection
   const { maxRequests, windowMs } = config.rateLimit;
 
   // Clean up old logs
@@ -83,4 +113,7 @@ setInterval(() => {
       requestLogs.set(ip, validLogs);
     }
   }
+
+  // Monitor memory usage
+  checkMemoryUsage();
 }, 60000); // Run cleanup every minute

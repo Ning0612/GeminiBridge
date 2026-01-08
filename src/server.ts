@@ -31,7 +31,7 @@ function createApp(): express.Application {
 
   // Explicitly handle UTF-8 encoding for JSON requests
   app.use(express.json({
-    limit: '10mb',
+    limit: '1mb',  // Reduced from 10mb for DoS protection (sufficient for chat requests)
     type: ['application/json', 'application/json; charset=utf-8']
   }));
 

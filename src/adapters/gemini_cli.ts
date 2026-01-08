@@ -52,6 +52,47 @@ function maskSensitive(content: string, maxLength: number = 50): string {
 }
 
 /**
+ * Check disk space and warn if low
+ * Helps prevent disk space issues from accumulating temp files
+ */
+function checkDiskSpace(): void {
+  const tmpDir = os.tmpdir();
+  try {
+    // Note: statfsSync is available in Node.js 19+
+    // For older versions, this may need adjustment
+    if (fs.statfsSync) {
+      const stats = fs.statfsSync(tmpDir);
+      const freeSpaceGB = (stats.bfree * stats.bsize) / (1024 ** 3);
+
+      if (freeSpaceGB < 1) {
+        logger.error('Low disk space in temp directory', {
+          freeSpaceGB: freeSpaceGB.toFixed(2),
+          tmpDir
+        });
+      } else if (freeSpaceGB < 5) {
+        logger.warn('Disk space running low in temp directory', {
+          freeSpaceGB: freeSpaceGB.toFixed(2),
+          tmpDir
+        });
+      }
+    }
+  } catch (error) {
+    logger.debug('Unable to check disk space (may not be supported on this Node.js version)', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
+
+// Check disk space periodically (every 5 minutes)
+try {
+  setInterval(checkDiskSpace, 300000);
+} catch (error) {
+  logger.warn('Failed to setup disk space monitoring', {
+    error: error instanceof Error ? error.message : String(error)
+  });
+}
+
+/**
  * Stream event emitter for Gemini CLI streaming mode
  * @deprecated No longer used - streaming now uses executeGeminiCLI with chunked SSE responses
  */
