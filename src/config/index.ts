@@ -42,6 +42,15 @@ function validateConfig(): void {
       'Please check your .env file'
     );
   }
+
+  // Validate Bearer Token strength
+  const token = process.env.BEARER_TOKEN!;
+  if (token.length < 32) {
+    console.warn('⚠️  WARNING: BEARER_TOKEN should be at least 32 characters for security');
+  }
+  if (token === 'your-secret-token-here') {
+    console.warn('⚠️  WARNING: Please change the default BEARER_TOKEN in production');
+  }
 }
 
 /**
@@ -57,7 +66,9 @@ export function getConfig(): AppConfig {
     host: process.env.HOST || '127.0.0.1',
     bearerToken: process.env.BEARER_TOKEN!,
     geminiCLI: {
-      cliPath: process.env.GEMINI_CLI_PATH || 'gemini',
+      // Hard-coded to 'gemini' for security and compatibility
+      // Using full paths or custom values can cause incorrect response content
+      cliPath: 'gemini',
       timeout: parseInt(process.env.GEMINI_CLI_TIMEOUT || '30000', 10),
       useSandbox: true, // Always use sandbox for security
     },

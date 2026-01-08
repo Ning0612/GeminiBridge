@@ -13,6 +13,44 @@ import { CLIExecutionResult } from '../types';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
+// Debug mode flag
+const DEBUG_MODE = process.env.DEBUG === 'true';
+
+/**
+ * Resolve CLI command path and determine if shell is needed
+ * 
+ * IMPORTANT: On Windows, Gemini CLI must be executed through shell to work correctly.
+ * Using full paths or executing .cmd files directly can cause incorrect response content.
+ * This is a known limitation of the Gemini CLI on Windows.
+ * 
+ * Security note: While shell: true introduces potential command injection risks,
+ * it is necessary for Windows compatibility. The cliPath comes from environment
+ * variables which should be controlled by the server administrator.
+ */
+function resolveCliCommand(cliPath: string): { command: string; useShell: boolean } {
+  // On Windows, always use shell mode for Gemini CLI
+  // This is required because:
+  // 1. .cmd files need shell to execute properly
+  // 2. Using full paths can cause incorrect response content
+  // 3. The CLI needs to be resolved through PATH
+  if (process.platform === 'win32') {
+    return { command: cliPath, useShell: true };
+  }
+
+  // On Unix-like systems, shell is not needed
+  return { command: cliPath, useShell: false };
+}
+
+/**
+ * Mask sensitive information in logs
+ */
+function maskSensitive(content: string, maxLength: number = 50): string {
+  if (content.length <= maxLength) {
+    return '[MASKED]';
+  }
+  return content.substring(0, maxLength) + '...[MASKED]';
+}
+
 /**
  * Stream event emitter for Gemini CLI streaming mode
  * @deprecated No longer used - streaming now uses executeGeminiCLI with chunked SSE responses
@@ -47,16 +85,18 @@ export class GeminiStream extends EventEmitter {
       model: this.model,
       cliPath: config.geminiCLI.cliPath,
       promptLength: this.prompt.length,
-      promptPreview: this.prompt.substring(0, 100),
+      promptPreview: DEBUG_MODE ? this.prompt.substring(0, 100) : maskSensitive(this.prompt),
     });
 
     // Use stdin to pass prompt to avoid shell encoding issues
     const args = ['-m', this.model, '--sandbox'];
 
-    this.process = spawn(config.geminiCLI.cliPath, args, {
+    const { command: cliCommand, useShell } = resolveCliCommand(config.geminiCLI.cliPath);
+
+    this.process = spawn(cliCommand, args, {
       cwd: this.workDir,
       stdio: ['pipe', 'pipe', 'pipe'],
-      shell: true,
+      shell: useShell,
     });
 
     // Write prompt to stdin instead of using -p parameter
@@ -177,26 +217,32 @@ export async function executeGeminiCLI(
       model,
       cliPath: config.geminiCLI.cliPath,
       promptLength: prompt.length,
-      promptPreview: prompt.substring(0, 100),
+      promptPreview: DEBUG_MODE ? prompt.substring(0, 100) : maskSensitive(prompt),
     });
 
     // Use stdin to pass prompt to avoid shell encoding issues
     const args = ['-m', model, '--sandbox'];
 
-    console.log('[DEBUG] Executing:', config.geminiCLI.cliPath, args.join(' '));
-    console.log('[DEBUG] Prompt length:', prompt.length, 'bytes');
-    console.log('[DEBUG] Prompt buffer:', Buffer.from(prompt, 'utf8').toString('hex').substring(0, 100));
+    if (DEBUG_MODE) {
+      console.log('[DEBUG] Executing:', config.geminiCLI.cliPath, args.join(' '));
+      console.log('[DEBUG] Prompt length:', prompt.length, 'bytes');
+      console.log('[DEBUG] Prompt buffer:', Buffer.from(prompt, 'utf8').toString('hex').substring(0, 100));
+    }
 
-    const spawnedProcess = spawn(config.geminiCLI.cliPath, args, {
+    const { command: cliCommand, useShell } = resolveCliCommand(config.geminiCLI.cliPath);
+
+    const spawnedProcess = spawn(cliCommand, args, {
       cwd: workDir,
       stdio: ['pipe', 'pipe', 'pipe'],
-      shell: true,
+      shell: useShell,
     });
 
     // Write prompt to stdin with UTF-8 encoding
     if (spawnedProcess.stdin) {
       const promptBuffer = Buffer.from(prompt, 'utf8');
-      console.log('[DEBUG] Writing', promptBuffer.length, 'bytes to stdin');
+      if (DEBUG_MODE) {
+        console.log('[DEBUG] Writing', promptBuffer.length, 'bytes to stdin');
+      }
       spawnedProcess.stdin.write(promptBuffer);
       spawnedProcess.stdin.end();
     }
@@ -279,10 +325,12 @@ export async function executeGeminiCLI(
       logger.info('Extracted content from CLI output', {
         requestId,
         contentLength: content.length,
-        contentPreview: content.substring(0, 200),
+        contentPreview: DEBUG_MODE ? content.substring(0, 200) : maskSensitive(content, 100),
       });
 
-      console.log('[DEBUG] Full CLI response:', content);
+      if (DEBUG_MODE) {
+        console.log('[DEBUG] Full CLI response:', content);
+      }
 
       resolve({
         success: true,

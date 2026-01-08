@@ -17,6 +17,9 @@ import {
 } from '../utils/error_handler';
 import { logRequest, logRequestStart, logError, logger } from '../utils/logger';
 
+// Debug mode flag
+const DEBUG_MODE = process.env.DEBUG === 'true';
+
 const router = Router();
 
 /**
@@ -62,10 +65,12 @@ const chatCompletionHandler = async (req: Request, res: Response) => {
     // Build prompt
     const prompt = buildPrompt(body.messages);
 
-    // Debug: Check if prompt contains valid UTF-8
-    console.log('[DEBUG] Built prompt length:', prompt.length);
-    console.log('[DEBUG] Built prompt preview:', prompt.substring(0, 100));
-    console.log('[DEBUG] Built prompt hex:', Buffer.from(prompt, 'utf8').toString('hex').substring(0, 100));
+    // Debug: Check if prompt contains valid UTF-8 (only in debug mode)
+    if (DEBUG_MODE) {
+      console.log('[DEBUG] Built prompt length:', prompt.length);
+      console.log('[DEBUG] Built prompt preview:', prompt.substring(0, 100));
+      console.log('[DEBUG] Built prompt hex:', Buffer.from(prompt, 'utf8').toString('hex').substring(0, 100));
+    }
 
     // Check if streaming requested
     const isStreaming = body.stream === true;

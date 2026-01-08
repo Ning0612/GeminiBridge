@@ -7,6 +7,9 @@ import express from 'express';
 import { config } from './config';
 import { logger } from './utils/logger';
 
+// Debug mode flag
+const DEBUG_MODE = process.env.DEBUG === 'true';
+
 // Middleware
 import { corsMiddleware } from './middleware/cors';
 import { requestLoggerMiddleware } from './middleware/request_logger';
@@ -32,14 +35,15 @@ function createApp(): express.Application {
     type: ['application/json', 'application/json; charset=utf-8']
   }));
 
-  // Add raw body debugging middleware (before request logger)
+  // Conditional debug logging (only when DEBUG=true)
   app.use((req, _res, next) => {
-    if (req.method === 'POST' && req.path.includes('/chat/completions')) {
-      console.log('[DEBUG] Raw request body:', JSON.stringify(req.body, null, 2));
+    if (DEBUG_MODE && req.method === 'POST' && req.path.includes('/chat/completions')) {
+      console.log('[DEBUG] Request to /chat/completions');
+      console.log('[DEBUG] Message count:', req.body?.messages?.length || 0);
       if (req.body?.messages?.[0]?.content) {
         const content = req.body.messages[0].content;
-        console.log('[DEBUG] First message content:', content);
-        console.log('[DEBUG] First message hex:', Buffer.from(content, 'utf8').toString('hex').substring(0, 100));
+        console.log('[DEBUG] First message length:', content.length);
+        console.log('[DEBUG] First message preview:', content.substring(0, 50));
       }
     }
     next();

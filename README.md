@@ -55,12 +55,15 @@ HOST=127.0.0.1
 BEARER_TOKEN=your-secret-token-here
 
 # Gemini CLI Configuration
-GEMINI_CLI_PATH=gemini
+# Note: CLI path is hard-coded to 'gemini' for security and compatibility
 GEMINI_CLI_TIMEOUT=30000
 
 # Logging
 LOG_LEVEL=info
 LOG_RETENTION_DAYS=7
+
+# Debug Mode (set to true only in development)
+DEBUG=false
 
 # Rate Limiting
 RATE_LIMIT_MAX_REQUESTS=100
@@ -231,8 +234,9 @@ Health check endpoint (no authentication required).
 1. **Bearer Token**: Always set a strong, random bearer token in production
 2. **Localhost Only**: By default, server binds to `127.0.0.1` (localhost only)
 3. **CORS**: Configured for browser extensions and localhost access
-4. **CLI Sandbox**: Gemini CLI always runs with `--sandbox` flag
+4. **CLI Sandbox**: Gemini CLI always runs with `--sandbox` flag (hard-coded to `'gemini'` command)
 5. **Rate Limiting**: Prevents abuse (100 requests/minute by default)
+6. **Log Security**: Sensitive information is masked in logs (controlled by `DEBUG` environment variable)
 
 ## Troubleshooting
 
@@ -240,14 +244,12 @@ Health check endpoint (no authentication required).
 ```
 Error: spawn gemini ENOENT
 ```
-**Solution**: Install Gemini CLI or set correct path in `.env`:
-```env
-# Windows example (if using npm global install)
-GEMINI_CLI_PATH=C:\Users\YourName\AppData\Roaming\npm\gemini.cmd
+**Solution**: Ensure Gemini CLI is installed and available in your system PATH.
 
-# Linux/macOS example
-GEMINI_CLI_PATH=/usr/local/bin/gemini
-```
+**Note**: The CLI path is hard-coded to `'gemini'` for security and compatibility. 
+Custom paths are not supported as they can cause incorrect response content.
+
+Installation guide: [Gemini CLI Documentation](https://cloud.google.com/vertex-ai/generative-ai/docs/multimodal/call-gemini-using-cli)
 
 ### Authentication failed
 ```
