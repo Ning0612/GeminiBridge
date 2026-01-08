@@ -12,6 +12,7 @@ import * as os from 'os';
 import { CLIExecutionResult } from '../types';
 import { config } from '../config';
 import { logger } from '../utils/logger';
+import { cliQueue } from '../utils/cli_queue';
 
 // Debug mode flag
 const DEBUG_MODE = process.env.DEBUG === 'true';
@@ -237,9 +238,23 @@ export class GeminiStream extends EventEmitter {
 }
 
 /**
- * Execute Gemini CLI in non-streaming mode
+ * Execute Gemini CLI in non-streaming mode (with concurrency control)
  */
 export async function executeGeminiCLI(
+  prompt: string,
+  model: string,
+  requestId: string
+): Promise<CLIExecutionResult> {
+  // Execute with concurrency control
+  return cliQueue.execute(requestId, async () => {
+    return executeGeminiCLIInternal(prompt, model, requestId);
+  });
+}
+
+/**
+ * Internal CLI execution (wrapped by queue manager)
+ */
+async function executeGeminiCLIInternal(
   prompt: string,
   model: string,
   requestId: string

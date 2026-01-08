@@ -240,7 +240,26 @@ process.on('close', (code) => {
 
 **Future Use:** Could be revived if CLI adds streaming support
 
-### 5. Utility Modules
+### 5. Resource Management (`src/utils/cli_queue.ts`)
+
+#### CLIQueueManager Class
+
+**Responsibilities:**
+- Limits concurrent CLI processes (default: 5)
+- Queues requests when limit is reached
+- Enforces queue timeouts (default: 30s)
+- Monitors active and queued request counts
+
+**Mechanism:**
+```typescript
+if (activeRequests < maxConcurrent) {
+  executeImmediate();
+} else {
+  enqueueRequest(); // Waiting for slot or timeout
+}
+```
+
+### 6. Utility Modules
 
 #### Prompt Builder (`src/utils/prompt_builder.ts`)
 
@@ -423,21 +442,30 @@ export const config = getConfig(); // Loaded once at startup
    - Timeout enforcement (30s default)
    - Process cleanup on error/timeout
 
-4. **Input Validation**
+### 4. Execution Layer
+   - Sandboxed CLI execution (`--sandbox` flag)
+   - Temporary isolated directories
+   - Timeout enforcement (30s default)
+   - Process cleanup on error/timeout
+   - **Concurrency Control**: Queue-based CLI process limiting (default: 5)
+
+### 5. Input Validation
    - Message structure validation
    - Content type validation
-   - Request size limits (10MB)
+   - Request size limits (1MB for JSON/Body)
+   - Prompt content validation
 
 ### Threat Mitigation
 
 | Threat | Mitigation |
 |--------|------------|
-| **Command Injection** | Stdin for prompts (not CLI args) |
+| **Command Injection** | Stdin for prompts, No shell (except Win .cmd), Hardcoded paths |
 | **Path Traversal** | Isolated temp directories per request |
-| **DoS (Rate)** | Sliding window rate limiter |
-| **DoS (Resource)** | Timeout enforcement, process kill |
-| **Unauthorized Access** | Bearer token authentication |
-| **CORS Attacks** | Explicit origin whitelist |
+| **DoS (Rate)** | Sliding window rate limiter (IP based) |
+| **DoS (Resource)** | **Concurrency queue**, Timeout enforcement, Process kill |
+| **Unauthorized Access** | **Timing-safe** Bearer token authentication |
+| **CORS Attacks** | Explicit origin whitelist with Regex |
+| **Info Leakage** | **Masked** sensitive data in logs, DEBUG mode control |
 
 ---
 
@@ -553,7 +581,14 @@ GEMINI_CLI_TIMEOUT=30000
 RATE_LIMIT_MAX_REQUESTS=100
 RATE_LIMIT_WINDOW_MS=60000
 
+# Concurrency Control
+MAX_CONCURRENT_REQUESTS=5
+QUEUE_TIMEOUT=30000
+
 # Logging
+LOG_LEVEL=info
+DEBUG=false
+LOG_RETENTION_DAYS=7
 LOG_LEVEL=info
 LOG_RETENTION_DAYS=7
 ```

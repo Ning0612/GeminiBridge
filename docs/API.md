@@ -59,8 +59,25 @@ curl http://127.0.0.1:11434/health
 ```json
 {
   "status": "ok",
-  "timestamp": "2024-01-07T12:00:00.000Z",
-  "version": "1.0.0"
+  "timestamp": "2026-01-08T12:00:00.000Z",
+  "version": "1.0.0",
+  "uptime": 3600,
+  "cli": {
+    "activeProcesses": 2,
+    "queuedRequests": 0,
+    "totalProcessed": 150,
+    "averageWaitTimeMs": 45,
+    "maxConcurrent": 5
+  },
+  "resources": {
+    "memory": {
+       "heapUsedMB": 64.5,
+       "rssMB": 156
+    },
+    "cpu": {
+       "percent": 12.5
+    }
+  }
 }
 ```
 

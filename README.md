@@ -65,9 +65,16 @@ LOG_RETENTION_DAYS=7
 # Debug Mode (set to true only in development)
 DEBUG=false
 
+# Debug Mode (set to true only in development)
+DEBUG=false
+
 # Rate Limiting
 RATE_LIMIT_MAX_REQUESTS=100
 RATE_LIMIT_WINDOW_MS=60000
+
+# CLI Concurrency Control
+MAX_CONCURRENT_REQUESTS=5   # Maximum concurrent CLI processes
+QUEUE_TIMEOUT=30000         # Queue timeout (milliseconds)
 ```
 
 3. **Customize model mappings** (optional):
@@ -237,6 +244,26 @@ Health check endpoint (no authentication required).
 4. **CLI Sandbox**: Gemini CLI always runs with `--sandbox` flag (hard-coded to `'gemini'` command)
 5. **Rate Limiting**: Prevents abuse (100 requests/minute by default)
 6. **Log Security**: Sensitive information is masked in logs (controlled by `DEBUG` environment variable)
+7. **Resource Protection**: Limits concurrent CLI processes (default: 5) and monitors system resources
+
+## Monitoring
+
+### Health Check Endpoint
+`GET /health` returns system status and resource usage:
+
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-01-08T11:00:00Z",
+  "uptime": 3600,
+  "cli": {
+    "activeProcesses": 2,    // Current active CLI processes
+    "queuedRequests": 0,     // Requests waiting in queue
+    "totalProcessed": 150,   // Total processed requests
+    "maxConcurrent": 5       // Max concurrent limit
+  }
+}
+```
 
 ## Troubleshooting
 
@@ -521,7 +548,9 @@ BEARER_TOKEN=use-strong-random-token-here
 │   ├── utils/
 │   │   ├── prompt_builder.ts     # OpenAI → Gemini prompt conversion
 │   │   ├── logger.ts             # Winston logging
-│   │   └── error_handler.ts      # Error formatting
+│   │   ├── error_handler.ts      # Error formatting
+│   │   ├── cli_queue.ts          # CLI process concurrency control
+│   │   └── resource_monitor.ts   # System resource monitoring
 │   ├── adapters/
 │   │   └── gemini_cli.ts         # Gemini CLI interface
 │   ├── middleware/

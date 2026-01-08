@@ -19,6 +19,7 @@ import { authMiddleware } from './middleware/auth';
 // Routes
 import modelsRouter from './routes/models';
 import chatRouter from './routes/chat';
+import { cliQueue } from './utils/cli_queue';
 
 /**
  * Create and configure Express application
@@ -59,11 +60,31 @@ function createApp(): express.Application {
 
   // Health check endpoint (no auth required)
   app.get('/health', (_req, res) => {
+    const queueStats = cliQueue.getStats();
+
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
       version: '1.0.0',
+      uptime: Math.round(process.uptime()),
+      cli: {
+        activeProcesses: queueStats.activeRequests,
+        queuedRequests: queueStats.queuedRequests,
+        totalProcessed: queueStats.totalProcessed,
+        averageWaitTimeMs: queueStats.averageWaitTime,
+        maxConcurrent: queueStats.maxConcurrent,
+      },
     });
+  });
+
+  // Monitor CLI concurrency and warn if limit reached
+  cliQueue.on('active-change', (count: number) => {
+    if (count >= cliQueue.getStats().maxConcurrent) {
+      logger.warn('CLI concurrency limit reached', {
+        activeProcesses: count,
+        maxConcurrent: cliQueue.getStats().maxConcurrent,
+      });
+    }
   });
 
   // 404 handler
