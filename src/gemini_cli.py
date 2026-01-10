@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import shutil
 import re
+import random
 from pathlib import Path
 from typing import Dict, Any
 from dataclasses import dataclass
@@ -104,6 +105,81 @@ def _is_docker_conflict_error(exit_code: int, stderr: str) -> bool:
     return False
 
 
+def _wait_for_container_to_stop(container_name: str, timeout_seconds: int = 30) -> bool:
+    """
+    Wait for a container to stop naturally (polling every 1 second)
+    
+    Args:
+        container_name: Name of the container to wait for
+        timeout_seconds: Maximum time to wait in seconds
+        
+    Returns:
+        True if container stopped within timeout, False otherwise
+    """
+    import time
+    
+    start_time = time.time()
+    poll_interval = 1.0  # Check every 1 second
+    
+    logger.info(
+        "Waiting for container to complete naturally",
+        extra={"extra": {"container_name": container_name, "timeout_seconds": timeout_seconds}}
+    )
+    
+    while (time.time() - start_time) < timeout_seconds:
+        try:
+            # Check if container still exists and is running
+            result = subprocess.run(
+                ['docker', 'inspect', '--format', '{{.State.Running}}', container_name],
+                capture_output=True,
+                timeout=5,
+                text=True
+            )
+            
+            if result.returncode != 0:
+                # Container doesn't exist anymore
+                logger.info(
+                    "Container no longer exists",
+                    extra={"extra": {"container_name": container_name}}
+                )
+                return True
+            
+            is_running = result.stdout.strip().lower() == 'true'
+            
+            if not is_running:
+                # Container stopped
+                elapsed = time.time() - start_time
+                logger.info(
+                    "Container stopped naturally",
+                    extra={"extra": {"container_name": container_name, "waited_seconds": round(elapsed, 2)}}
+                )
+                return True
+            
+            # Still running, wait before next check
+            time.sleep(poll_interval)
+            
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "Timeout checking container status",
+                extra={"extra": {"container_name": container_name}}
+            )
+            return False
+        except Exception as e:
+            logger.warning(
+                "Error checking container status",
+                extra={"extra": {"container_name": container_name, "error": str(e)}}
+            )
+            return False
+    
+    # Timeout reached
+    elapsed = time.time() - start_time
+    logger.warning(
+        "Container still running after timeout",
+        extra={"extra": {"container_name": container_name, "waited_seconds": round(elapsed, 2)}}
+    )
+    return False
+
+
 def _extract_container_name(stderr: str) -> str | None:
     """
     Extract container name from Docker error message
@@ -117,27 +193,54 @@ def _extract_container_name(stderr: str) -> str | None:
     return None
 
 
-def _cleanup_docker_container(container_name: str) -> bool:
+def _cleanup_docker_container(container_name: str, force_stop: bool = False) -> bool:
     """
     Attempt to remove Docker container by name
-    Returns True if successful, False otherwise
+    By default, only removes stopped containers to avoid interfering with running requests
+    
+    Args:
+        container_name: Name of the container to remove
+        force_stop: If True, forcefully stop and remove; if False, only remove if already stopped
+        
+    Returns:
+        True if successful, False otherwise
     """
+    config = get_config()
+    timeout = config.docker_cleanup_timeout
+    
     try:
-        # Try to remove container (force remove even if running)
+        if force_stop:
+            # Force stop - only use this when we know it's a conflict
+            stop_result = subprocess.run(
+                ['docker', 'stop', container_name],
+                capture_output=True,
+                timeout=timeout,
+                text=True
+            )
+        
+        # Try to remove (will fail if container is still running without force_stop)
         result = subprocess.run(
-            ['docker', 'rm', '-f', container_name],
+            ['docker', 'rm', '-f' if force_stop else '', container_name],
             capture_output=True,
-            timeout=5,
+            timeout=timeout,
             text=True
         )
 
         if result.returncode == 0:
             logger.debug(
                 "Docker container cleanup successful",
-                extra={"extra": {"container_name": container_name}}
+                extra={"extra": {"container_name": container_name, "forced": force_stop}}
             )
             return True
         else:
+            # It's OK if removal fails for running containers when not forcing
+            if not force_stop and "is not stopped" in result.stderr.lower():
+                logger.debug(
+                    "Skipped cleanup of running container",
+                    extra={"extra": {"container_name": container_name}}
+                )
+                return False
+            
             logger.warning(
                 "Failed to cleanup Docker container",
                 extra={"extra": {"container_name": container_name, "stderr": result.stderr.strip()}}
@@ -156,6 +259,93 @@ def _cleanup_docker_container(container_name: str) -> bool:
             extra={"extra": {"container_name": container_name, "error": str(e)}}
         )
         return False
+
+
+def _get_running_containers() -> list[str]:
+    """
+    Get list of running sandbox containers
+    Returns list of container names for diagnostics
+    """
+    try:
+        result = subprocess.run(
+            ['docker', 'ps', '-a', '-f', 'name=sandbox', '--format', '{{.Names}}'],
+            capture_output=True,
+            timeout=5,
+            text=True
+        )
+        
+        if result.returncode == 0 and result.stdout.strip():
+            containers = [c.strip() for c in result.stdout.strip().split('\n') if c.strip()]
+            return containers
+        return []
+    except Exception as e:
+        logger.debug(
+            "Failed to get running containers",
+            extra={"extra": {"error": str(e)}}
+        )
+        return []
+
+
+def _cleanup_all_sandbox_containers() -> tuple[int, int]:
+    """
+    Proactively cleanup stopped sandbox containers before execution
+    Only removes containers that are already stopped to avoid interfering with running requests
+    Returns tuple of (total_found, successfully_cleaned)
+    """
+    config = get_config()
+    
+    if not config.enable_proactive_cleanup:
+        return (0, 0)
+    
+    try:
+        # Get all sandbox containers (including stopped ones)
+        containers = _get_running_containers()
+        
+        if not containers:
+            return (0, 0)
+        
+        logger.debug(
+            "Proactive cleanup: checking sandbox containers",
+            extra={"extra": {"count": len(containers), "containers": containers}}
+        )
+        
+        success_count = 0
+        failed_containers = []
+        
+        for container in containers:
+            # Only remove stopped containers (force_stop=False)
+            # This prevents interfering with containers from concurrent requests
+            cleanup_result = _cleanup_docker_container(container, force_stop=False)
+            if cleanup_result:
+                success_count += 1
+            else:
+                # Track failed cleanups for debugging
+                failed_containers.append(container)
+        
+        if success_count > 0:
+            logger.info(
+                "Proactive cleanup: removed stopped containers",
+                extra={"extra": {
+                    "total_checked": len(containers),
+                    "cleaned": success_count,
+                    "failed": len(failed_containers)
+                }}
+            )
+        
+        if failed_containers:
+            logger.debug(
+                "Proactive cleanup: some containers still running",
+                extra={"extra": {"running_containers": failed_containers}}
+            )
+        
+        return (len(containers), success_count)
+        
+    except Exception as e:
+        logger.warning(
+            "Error during proactive cleanup",
+            extra={"extra": {"error": str(e)}}
+        )
+        return (0, 0)
 
 
 def execute_gemini_cli_sync(
@@ -194,6 +384,20 @@ def execute_gemini_cli_sync(
     if max_retries is None:
         config = get_config()
         max_retries = config.cli_max_retries
+    else:
+        config = get_config()
+    
+    # Proactive cleanup before first execution attempt
+    cleanup_wait_ms = config.cli_cleanup_wait_ms / 1000  # Convert to seconds
+    if config.enable_proactive_cleanup:
+        total, cleaned = _cleanup_all_sandbox_containers()
+        if total > 0:
+            logger.info(
+                "Proactive cleanup before execution",
+                extra={"extra": {"request_id": request_id, "containers_found": total, "cleaned": cleaned}}
+            )
+            # Wait a bit after cleanup
+            time.sleep(cleanup_wait_ms)
 
     # Retry loop
     for attempt in range(max_retries + 1):  # 0-indexed, so +1 for total attempts
@@ -226,26 +430,75 @@ def execute_gemini_cli_sync(
                     )
                     break
 
-                # Try to cleanup the conflicting container
-                cleanup_success = _cleanup_docker_container(container_name)
+                # Strategy: Wait for container to complete naturally first
+                # Only force-stop if it's still running after timeout
+                config = get_config()
+                wait_timeout = config.gemini_cli_timeout  # Use CLI timeout as wait time
+                
+                container_stopped = _wait_for_container_to_stop(container_name, wait_timeout)
+                
+                if container_stopped:
+                    # Container stopped naturally, try to remove it
+                    cleanup_success = _cleanup_docker_container(container_name, force_stop=False)
+                else:
+                    # Container still running after timeout, force cleanup
+                    logger.warning(
+                        "Container did not stop naturally, forcing cleanup",
+                        extra={"extra": {"container_name": container_name}}
+                    )
+                    cleanup_success = _cleanup_docker_container(container_name, force_stop=True)
 
                 if cleanup_success:
                     logger.info(
                         "Retrying after Docker cleanup",
                         extra={"extra": {"attempt": attempt + 1, "max_retries": max_retries}}
                     )
-                    # Wait a bit before retry
-                    time.sleep(0.5)
+                    # Smart random delay based on attempt number to reduce retry conflicts
+                    # Attempt 0 (first retry): 100-300ms
+                    # Attempt 1 (second retry): 200-500ms
+                    # Attempt 2+ (third+ retry): 300-800ms
+                    if attempt == 0:
+                        random_delay = random.uniform(0.1, 0.3)
+                    elif attempt == 1:
+                        random_delay = random.uniform(0.2, 0.5)
+                    else:
+                        random_delay = random.uniform(0.3, 0.8)
+                    
+                    total_delay = cleanup_wait_ms + random_delay
+                    logger.debug(
+                        "Applying smart delay before retry",
+                        extra={"extra": {
+                            "attempt": attempt,
+                            "cleanup_wait_s": cleanup_wait_ms,
+                            "random_delay_s": round(random_delay, 3),
+                            "total_delay_s": round(total_delay, 3)
+                        }}
+                    )
+                    time.sleep(total_delay)
                     continue  # Retry
                 else:
                     logger.warning("Cleanup failed, retrying anyway")
-                    time.sleep(0.5)
+                    # Apply smart delay even on cleanup failure
+                    if attempt == 0:
+                        random_delay = random.uniform(0.1, 0.3)
+                    elif attempt == 1:
+                        random_delay = random.uniform(0.2, 0.5)
+                    else:
+                        random_delay = random.uniform(0.3, 0.8)
+                    time.sleep(cleanup_wait_ms + random_delay)
                     continue  # Retry even if cleanup failed
             else:
                 # Couldn't extract container name, but still retry
                 if attempt < max_retries:
                     logger.warning("Docker conflict detected but couldn't extract container name, retrying")
-                    time.sleep(0.5)
+                    # Apply smart delay
+                    if attempt == 0:
+                        random_delay = random.uniform(0.1, 0.3)
+                    elif attempt == 1:
+                        random_delay = random.uniform(0.2, 0.5)
+                    else:
+                        random_delay = random.uniform(0.3, 0.8)
+                    time.sleep(cleanup_wait_ms + random_delay)
                     continue
                 else:
                     break

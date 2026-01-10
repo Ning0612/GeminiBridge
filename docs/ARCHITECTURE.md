@@ -268,8 +268,27 @@ for attempt in range(max_retries + 1):
 
     if docker_conflict_detected(result):
         container_name = extract_container_name(result.stderr)
-        cleanup_docker_container(container_name)
-        time.sleep(0.5)
+        
+        # Wait for container to stop naturally first
+        container_stopped = _wait_for_container_to_stop(container_name, timeout=2)
+        
+        if container_stopped:
+            cleanup_success = _cleanup_docker_container(container_name, force_stop=False)
+        else:
+            # Force cleanup if still running after timeout
+            cleanup_success = _cleanup_docker_container(container_name, force_stop=True)
+        
+        # Smart random delay based on attempt number
+        # Attempt 0: 100-300ms, Attempt 1: 200-500ms, Attempt 2+: 300-800ms
+        if attempt == 0:
+            random_delay = random.uniform(0.1, 0.3)
+        elif attempt == 1:
+            random_delay = random.uniform(0.2, 0.5)
+        else:
+            random_delay = random.uniform(0.3, 0.8)
+        
+        total_delay = cleanup_wait_ms + random_delay
+        time.sleep(total_delay)
         continue  # Retry
 
     break  # Success or non-retryable error
@@ -279,6 +298,8 @@ for attempt in range(max_retries + 1):
 
 - **Why thread pool?** - Subprocess is blocking, can't use async directly
 - **Why retry?** - Docker container conflicts are transient, retry usually succeeds
+- **Why smart delays?** - Variable delays reduce concurrent retry conflicts, increasing success rate
+- **Why wait for container stop?** - Graceful cleanup is faster and safer than force-stopping
 - **Why temp workdir?** - Isolation prevents file conflicts between concurrent requests
 
 ### 3. Queue Manager (`src/queue_manager.py`)
@@ -289,34 +310,55 @@ for attempt in range(max_retries + 1):
 
 ```python
 class CLIQueueManager:
-    def __init__(self, max_concurrent: int):
+    def __init__(self, max_concurrent: int, queue_timeout: int, min_request_gap_ms: int = 500):
         self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._queue_timeout = queue_timeout
+        self._min_request_gap_ms = min_request_gap_ms
+        self._last_request_completion_time = 0.0
 
     async def execute(self, request_id, operation):
+        # Pre-semaphore random delay (10-50ms) to spread out concurrent starts
+        random_delay_ms = random.uniform(10, 50)
+        await asyncio.sleep(random_delay_ms / 1000)
+        
         # Wait for semaphore (with timeout)
         await asyncio.wait_for(
             self._semaphore.acquire(),
             timeout=self._queue_timeout
         )
+        
+        # Enforce minimum gap between requests
+        async with self._stats_lock:
+            if self._last_request_completion_time > 0:
+                elapsed_ms = (time.time() - self._last_request_completion_time) * 1000
+                if elapsed_ms < self._min_request_gap_ms:
+                    wait_ms = self._min_request_gap_ms - elapsed_ms
+                    await asyncio.sleep(wait_ms / 1000)
 
         try:
             result = await operation()
             return result
         finally:
+            async with self._stats_lock:
+                self._last_request_completion_time = time.time()
             self._semaphore.release()
 ```
 
 **Key Features:**
 
 - **Concurrency Control** - Limits simultaneous CLI processes
+- **Pre-Semaphore Random Delay** - 10-50ms random delay spreads out concurrent request starts
+- **Request Gap Enforcement** - Minimum configurable gap (default 500ms) between consecutive requests
 - **Queue Timeout** - Prevents infinite waiting
 - **Statistics Tracking** - Active, queued, total processed
-- **Thread-Safe** - Uses asyncio.Lock for stats
+- **Thread-Safe** - Uses asyncio.Lock for stats and timing
 
 **Design Decisions:**
 
 - **Why semaphore?** - Simple, efficient, built-in to asyncio
 - **Why timeout?** - Prevent resource exhaustion from slow requests
+- **Why pre-semaphore delay?** - Reduces Docker container name conflicts on concurrent starts
+- **Why request gap?** - Further reduces conflicts, provides throughput control
 - **Why statistics?** - Monitoring and capacity planning
 
 ### 4. Logging System (`src/logger.py`)

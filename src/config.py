@@ -44,6 +44,11 @@ class AppConfig(BaseSettings):
 
     # Retry Logic (for Docker sandbox conflicts)
     cli_max_retries: int = Field(default=3, ge=0, le=10)
+    cli_cleanup_wait_ms: int = Field(default=200, ge=0, le=2000)
+    
+    # Docker Cleanup Configuration
+    enable_proactive_cleanup: bool = Field(default=True)
+    docker_cleanup_timeout: int = Field(default=10, ge=1, le=30)
 
     # Gemini CLI Path Configuration
     # Default to 'gemini' (assumes in PATH), but can be overridden with full path

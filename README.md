@@ -125,6 +125,36 @@
 
 The server will start on `http://127.0.0.1:11434` by default.
 
+### Windows Auto-start (Optional)
+
+For Windows users who want GeminiBridge to start automatically on system boot:
+
+```powershell
+# Run PowerShell as Administrator
+.\setup_task_scheduler.ps1
+```
+
+This script will:
+- Create a Windows Task Scheduler task
+- Configure auto-start at system startup
+- Set up automatic restart on failure
+- Start the application immediately
+
+**Management Commands:**
+```powershell
+# View task status
+Get-ScheduledTask -TaskName "GeminiBridge"
+
+# Start/Stop manually
+Start-ScheduledTask -TaskName "GeminiBridge"
+Stop-ScheduledTask -TaskName "GeminiBridge"
+
+# Remove auto-start
+Unregister-ScheduledTask -TaskName "GeminiBridge" -Confirm:$false
+```
+
+See [Windows Deployment Guide](docs/DEPLOYMENT.md#windows-deployment) for detailed configuration.
+
 ## 📖 Usage
 
 ### Basic Example
@@ -227,8 +257,12 @@ Model mappings are configured in `config/models.json`.
 | `BEARER_TOKEN` | Authentication token | - | **Yes** |
 | `GEMINI_CLI_PATH` | Path to Gemini CLI | `gemini` | No |
 | `GEMINI_CLI_TIMEOUT` | CLI timeout (seconds) | `30` | No |
-| `CLI_MAX_RETRIES` | Max retry attempts for Docker conflicts | `3` | No |
+| `CLI_MAX_RETRIES` | Max retry attempts for Docker conflicts (with smart delays) | `3` | No |
+| `CLI_CLEANUP_WAIT_MS` | Docker cleanup wait time (milliseconds) | `200` | No |
+| `ENABLE_PROACTIVE_CLEANUP` | Enable proactive container cleanup | `true` | No |
+| `DOCKER_CLEANUP_TIMEOUT` | Docker cleanup timeout (seconds) | `10` | No |
 | `MAX_CONCURRENT_REQUESTS` | Max concurrent CLI processes | `5` | No |
+| `MIN_REQUEST_GAP_MS` | Minimum gap between requests (milliseconds) | `500` | No |
 | `QUEUE_TIMEOUT` | Queue timeout (seconds) | `30` | No |
 | `RATE_LIMIT_MAX_REQUESTS` | Max requests per window | `100` | No |
 | `RATE_LIMIT_WINDOW_SECONDS` | Rate limit window | `60` | No |

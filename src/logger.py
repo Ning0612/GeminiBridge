@@ -281,7 +281,6 @@ def setup_logger(
     )
     file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(json_formatter)
-    file_handler.suffix = "%Y-%m-%d.log"
     logger.addHandler(file_handler)
     
     # File handler - Error logs (ERROR+)
@@ -295,7 +294,6 @@ def setup_logger(
     )
     error_handler.setLevel(logging.ERROR)
     error_handler.setFormatter(json_formatter)
-    error_handler.suffix = "%Y-%m-%d.log"
     logger.addHandler(error_handler)
     
     # Console handler (optional, for development)

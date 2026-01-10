@@ -161,7 +161,10 @@ GEMINI_CLI_TIMEOUT=60
 
 # Performance
 MAX_CONCURRENT_REQUESTS=10
+MIN_REQUEST_GAP_MS=500
 QUEUE_TIMEOUT=60
+CLI_MAX_RETRIES=3
+CLI_CLEANUP_WAIT_MS=200  # Increase to 500-800 for better stability
 
 # Logging
 LOG_LEVEL=INFO
@@ -236,6 +239,175 @@ sudo systemctl status geminibridge
 # View logs
 sudo journalctl -u geminibridge -f
 ```
+
+### Windows Deployment
+
+Deploy GeminiBridge on Windows with automatic startup.
+
+#### 1. Install Prerequisites
+
+```powershell
+# Install Python 3.12+ from https://www.python.org/
+# Install Docker Desktop from https://www.docker.com/products/docker-desktop/
+# Install Gemini CLI
+npm install -g @google/generative-ai-cli
+```
+
+#### 2. Setup Project
+
+```powershell
+# Clone repository
+git clone https://github.com/yourusername/GeminiBridge.git
+cd GeminiBridge
+
+# Create virtual environment
+python -m venv .venv
+
+# Activate virtual environment
+.venv\Scripts\Activate.ps1
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+#### 3. Configure Environment
+
+```powershell
+# Copy environment template
+cp .env.example .env
+
+# Generate secure token
+python scripts/generate_token.py
+
+# Edit .env file (use notepad or your preferred editor)
+notepad .env
+```
+
+**Windows Production `.env` example:**
+
+```bash
+# Server
+PORT=11434
+HOST=127.0.0.1
+
+# Security
+BEARER_TOKEN=<generated-secure-token>
+
+# Gemini CLI (Windows path)
+GEMINI_CLI_PATH=C:\Users\YourName\AppData\Roaming\npm\gemini.cmd
+GEMINI_CLI_TIMEOUT=60
+
+# Performance (optimized for Windows)
+MAX_CONCURRENT_REQUESTS=8
+MIN_REQUEST_GAP_MS=500
+QUEUE_TIMEOUT=60
+CLI_MAX_RETRIES=3
+CLI_CLEANUP_WAIT_MS=200  # Increase to 500-800 if experiencing conflicts
+
+# Logging
+LOG_LEVEL=INFO
+LOG_RETENTION_DAYS=7
+DEBUG=false
+```
+
+#### 4. Setup Auto-Start with Task Scheduler
+
+**Option A: Automated Setup (Recommended)**
+
+```powershell
+# Run as Administrator
+.\setup_task_scheduler.ps1
+```
+
+The script will:
+- Validate Python virtual environment and project files
+- Create a Windows Task Scheduler task named "GeminiBridge"
+- Configure auto-start at system startup
+- Set up automatic restart on failure (3 attempts, 1-minute interval)
+- Start the application immediately
+- Display task status and Python processes
+
+**Option B: Manual Task Scheduler Setup**
+
+1. Open Task Scheduler (`taskschd.msc`)
+2. Create New Task:
+   - **General Tab:**
+     - Name: `GeminiBridge`
+     - Run whether user is logged on or not: ☐ (unchecked for user-level)
+     - Run with highest privileges: ☑
+   - **Triggers Tab:**
+     - New → Begin the task: `At startup`
+     - Delay task for: `30 seconds` (give Docker time to start)
+   - **Actions Tab:**
+     - Action: `Start a program`
+     - Program: `C:\path\to\GeminiBridge\.venv\Scripts\python.exe`
+     - Arguments: `main.py`
+     - Start in: `C:\path\to\GeminiBridge`
+   - **Conditions Tab:**
+     - Start only if computer is on AC power: ☐ (unchecked)
+   - **Settings Tab:**
+     - Allow task to be run on demand: ☑
+     - If task fails, restart every: `1 minute` (max 3 attempts)
+
+#### 5. Manage Windows Service
+
+```powershell
+# View task status
+Get-ScheduledTask -TaskName "GeminiBridge"
+Get-ScheduledTaskInfo -TaskName "GeminiBridge"
+
+# Start task manually
+Start-ScheduledTask -TaskName "GeminiBridge"
+
+# Stop task
+Stop-ScheduledTask -TaskName "GeminiBridge"
+
+# Disable auto-start
+Disable-ScheduledTask -TaskName "GeminiBridge"
+
+# Enable auto-start
+Enable-ScheduledTask -TaskName "GeminiBridge"
+
+# Remove task
+Unregister-ScheduledTask -TaskName "GeminiBridge" -Confirm:$false
+
+# Check if application is running
+Get-Process python* | Where-Object {$_.Path -like "*GeminiBridge*"}
+
+# View application logs
+Get-Content -Path ".\logs\gemini-bridge-$(Get-Date -Format 'yyyy-MM-dd').log" -Tail 50 -Wait
+```
+
+#### 6. Windows Firewall Configuration
+
+```powershell
+# Allow inbound connections (if needed for remote access)
+New-NetFirewallRule -DisplayName "GeminiBridge" `
+    -Direction Inbound `
+    -LocalPort 11434 `
+    -Protocol TCP `
+    -Action Allow
+
+# Remove firewall rule
+Remove-NetFirewallRule -DisplayName "GeminiBridge"
+```
+
+#### 7. Troubleshooting Windows Deployment
+
+**Task doesn't start:**
+- Check Docker Desktop is running
+- Verify Python virtual environment exists
+- Check Task Scheduler event logs: Event Viewer → Task Scheduler History
+
+**Application crashes:**
+- Check logs in `logs/` directory
+- Verify `.env` configuration is correct
+- Test manual start: `.venv\Scripts\python main.py`
+
+**Docker conflicts:**
+- Ensure Docker Desktop is fully started before GeminiBridge
+- Consider increasing `CLI_CLEANUP_WAIT_MS` to 800-1000ms
+- Reduce `MAX_CONCURRENT_REQUESTS` to 5-8
 
 ### Docker Deployment
 
